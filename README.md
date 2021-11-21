@@ -11,9 +11,12 @@ The aim of the project is creating a app rate prediction using the dataset [Goog
 
 # Requirements
 
+# Data Quality Issues
+
 # Data Preparation
 
-- ## Data Cleaning
+- ## Normalization
+- ## Binning
+- ## Sampling
 
-
-- ## Visualization
+# Visualization
