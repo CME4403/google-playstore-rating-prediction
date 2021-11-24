@@ -7,6 +7,9 @@ from sklearn.preprocessing import Normalizer, StandardScaler
 
 plt.style.use('seaborn')
 
+##İleride eğitim seti için ayırmakta kullanabliriz
+#train_data,test_data=train_test_split(playstore,test_size=0.15,random_state=42)
+
 # Helper function: Draw Hist Plot
 def num_plots(df, col, title, xlabel):
     fig, ax = plt.subplots(2, 1, sharex=True, figsize=(8,5))
@@ -95,8 +98,7 @@ def main():
   df.drop('Scraped Time',inplace=True,axis=1)
 
   df.head()
-  print("Dataset information", df.info())  
-
+  #print("Dataset information", df.info())  
 
   # Handle Missing Values
   missing_values(df)
@@ -153,6 +155,7 @@ def main():
     df_clean[feature] = StandardScaler().fit_transform(scaled_feature)
   '''
 
+  ''' least squares normalizer form '''
   normalizer = Normalizer(norm="l2")
   df_clean[cont_features] = normalizer.transform(df_clean[cont_features])
 
@@ -184,46 +187,33 @@ def main():
   
   # Release Date and Update Date  
   ''' Burada COVID19 1 aralıkta başlamış kabul edilmiş ama ben onu 2020 de başlamış olarak kabul ediyorum. '''
-  df_clean['Released'] = df_clean['Released'].fillna("NaN")
-  df_clean['Last Updated'] = df_clean['Last Updated'].fillna("NaN")
-  release_date = []
-  lastupdate_date = []
-  
-  for i in df_clean["Released"]:
-      if i == 'NaN':
-        release_date.append(None)
-      else:
-        x = i.split(", ")[1]
-        release_date.append(int(x))
-        
-  for i in df_clean["Last Updated"]:
-        x = i.split(", ")[1]
-        lastupdate_date.append(int(x))   
-          
-  df_clean['Released'] = release_date
-  df_clean['Released'] = round(df_clean['Released'].interpolate(method ='linear'))
+  df_clean['Released'] = pd.to_datetime(df_clean['Released'], format='%b %d, %Y',infer_datetime_format=True, errors='coerce') 
+  df_clean['Last Updated'] = pd.to_datetime(df_clean['Last Updated'], format='%b %d, %Y',infer_datetime_format=True, errors='coerce') 
+  u = df_clean.select_dtypes(include=['datetime'])
+  md=df_clean['Released'].median()
+  df_clean[u.columns]=u.fillna(md)
 
-  df_clean['Last Updated'] = lastupdate_date
+  covid= []
   
-  covid = []
-  
-  for i in df_clean["Released"]:
+  for i in pd.DatetimeIndex(df_clean['Released']).year:
       if i >= 2020:
         covid.append(True)
       else:
         covid.append(False)
 
-  df_clean.loc[(df_clean['Last Updated'] - df_clean['Released'] > 0),'Last Updated']=False
-  df_clean.loc[(df_clean['Last Updated'] - df_clean['Released'] <= 0),'Last Updated']=True
+  lastupdate = []
   
-  ''' append covid feature '''
+  for i in pd.DatetimeIndex(df_clean['Last Updated']).year:
+      if i > 2020:
+        lastupdate.append(True)
+      else:
+        lastupdate.append(False)
+ 
+  #append Up to Date
+  df_clean['Up to Date'] = lastupdate
+  
+  #append covid feature
   df_clean['Covid'] = covid
-  print(df_clean['Covid'])
-  
-  ''' drop released Date '''
-  df_clean.drop('Released', inplace=True,axis=1)
-
-  print("Dataset information", df_clean.info())
   
   # Minimum Android Version
   min_andr_ver = []
@@ -237,6 +227,13 @@ def main():
           
   df_clean['Minimum Android'] = min_andr_ver
   df_clean['Size'] = df_clean['Size'].astype(float)
+
+  #Free
+  df_clean['Type'] = np.where(df['Free'] == True,'Free','Paid')
+  df_clean.drop(['Free'],inplace=True,axis=1)
+  
+  #print("Dataset information",df_clean.info())  
+  #print(df_clean['Type'].value_counts())
 
   ### Visualization ###
 
@@ -314,6 +311,108 @@ def main():
   plt.xticks(rotation=60)
   plt.show()
   '''
+
+
+  # Released
+  ''' Visualization
+  sns.countplot(x='Released', data=df_clean)
+  plt.title('Released')
+  plt.xticks(rotation=60)
+  plt.show()
+ 
+  released_date_install=pd.concat([df_clean['Installs'],df_clean['Released']],axis=1)
+  plt.figure(figsize=(15,12))
+  released_date_plot=released_date_install.set_index('Released').resample('3M').mean()
+  released_date_plot.plot()
+  plt.title('Released date Vs Installs',fontdict={'size':20,'weight':'bold'})
+  plt.plot()
+  '''
+
+  #Covid-19 
+  """
+  plt.pie(df_clean['Covid'].value_counts(),radius=3,autopct='%0.2f%%',explode=[0.2,0.5],colors=['#ffa500','#0000a0'],labels=['Before Covid','Covid'],startangle=90,textprops={'fontsize': 30})
+  plt.title('Covid-19 Impact on Applications',fontdict={'size':20,'weight':'bold'})
+  plt.plot()
+  """
+  #Up to Date
+  """
+  plt.pie(df_clean['Up to Date'].value_counts(),radius=3,autopct='%0.2f%%',explode=[0.2,0.5],colors=['#ffa500','#0000a0'],labels=['No','Yes'],startangle=90,textprops={'fontsize': 30})
+  plt.title('Is the app up to date?',fontdict={'size':20,'weight':'bold'})
+  plt.plot()
+  """
+
+    #Type vs Install
+  '''
+  plt.figure(figsize=(18,18))
+  ax = sns.countplot(df_clean['Installs'],hue=df_clean['Type']);
+  plt.title("Number of Installs in different Types ")
+
+  plt.xticks(fontsize=10,fontweight='bold',rotation=45,ha='right');
+  plt.show()
+  '''
+
+  # Last Updated
+  '''
+  plt.figure(figsize=(10,4))
+  sns.histplot(x='Last Updated', data=df_clean)
+  plt.show()
+ 
+  lastupdate_install=pd.concat([df_clean['Installs'],df_clean['Last Updated']],axis=1)
+  plt.figure(figsize=(15,12))
+  released_date_plot=lastupdate_install.set_index('Last Updated').resample('3M').mean()
+  released_date_plot.plot()
+  plt.title('Last Update Vs Installs',fontdict={'size':20,'weight':'bold'})
+  plt.plot()
+  '''
+
+  # Content Rating
+  '''
+  age_install = df_clean.groupby('Content Rating')['Minimum Installs'].mean()
+
+  plt.axes().set_facecolor("white")
+  plt.rcParams.update({'font.size': 12, 'figure.figsize': (5, 4)})
+  plt.ylabel('Category')
+  plt.xlabel('Installs per 10 million')
+  age_install.sort_index().plot(kind="barh", title='Average Number of Installs per Content Rating');
+  plt.gca().invert_yaxis()
+  plt.savefig("Age rating", transparent=False, bbox_inches="tight")
+  '''
+
+  #Categories vs Install
+  #draw a boxplot map to observe app's ratings among different categories
+  """
+  category_rating = df.groupby(['Category'])['Installs'].count()
+
+  plt.figure(figsize=(15,10))
+  sns.barplot(category_rating.index, category_rating.values)
+  plt.title('Number of Installs Per Category')
+  plt.xlabel('Category')
+  plt.ylabel('Installs')
+  plt.xticks(fontsize=10,fontweight='bold',rotation=45,ha='right');
+  """
+
+  """
+  f, ax = plt.subplots(2,2,figsize=(10,15))
+
+  ax[0,0].hist(df_clean.Rating, range=(3,5))
+  ax[0,0].set_title('Ratings Histogram')
+  ax[0,0].set_xlabel('Ratings')
+
+  d = df_clean.groupby('Category')['Rating'].mean().reset_index()
+  ax[0,1].scatter(d.Category, d.Rating)
+  ax[0,1].set_xticklabels(d.Category.unique(),rotation=90)
+  ax[0,1].set_title('Mean Rating per Category')
+
+  ax[1,1].hist(df_clean.Size, range=(0,100),bins=10, label='Size')
+  ax[1,1].set_title('Size Histogram')
+  ax[1,1].set_xlabel('Size')
+
+  d = df_clean.groupby('Size')['Installs'].mean().reset_index()
+  ax[1,0].scatter(d.Size, d.Installs)
+  ax[1,0].set_xticklabels(d.Size.unique(),rotation=90)
+  ax[1,0].set_title('Mean Install per Size')
+  f.tight_layout()
+  """
 
   # Correlation Matrix
   sns.heatmap(df_clean.corr(), annot=True, cmap='Blues')
