@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
+from sklearn import preprocessing
+from sklearn.preprocessing import Normalizer, StandardScaler
 
 plt.style.use('seaborn')
 
@@ -74,17 +76,6 @@ def detect_and_drop_outliers(feature, df):
   upper_bound = q3 + (iqr * 1.5)
   return df[~( (df[feature] < lower_bound) | (df[feature] > upper_bound) )]
 
-# Normalization
-def normalization():
-  ''' 
-  * last update, size, price, rating count, last updated and installs have continuous values
-  * category, rating, free(bool), content rating, ad supported(bool), in app purchases(bool) have discrete values 
-  '''
-  # Binning
-  # Sampling
-  # Visualization
-  print("hello")
-
 def main():
   # read dataset
   df = pd.read_csv('./dataset/googleplaystore_expanded.csv')
@@ -106,7 +97,8 @@ def main():
   df.head()
   print("Dataset information", df.info())  
 
-  # handle missing values
+
+  # Handle Missing Values
   missing_values(df)
   df_clean = df.copy()
 
@@ -146,10 +138,26 @@ def main():
   df_clean.Installs = df_clean.Installs.str.replace('Free','0',regex=True)
   df_clean['Installs'] = pd.to_numeric(df_clean['Installs'])
   
-  # Find and Clean Outliers
+  #  Normalization
   ''' Continuous Features are: 'Size', 'Installs', 'Minimum Installs', 'Maximum Installs', 'Rating Count'  '''
   cont_features = ['Size', 'Installs', 'Minimum Installs', 'Maximum Installs', 'Rating Count']
 
+  '''
+  for feature in cont_features:
+   
+    minmax_scale = preprocessing.MinMaxScaler(feature_range=(0,1))
+    will_normalize_feature = np.array(df_clean[feature])
+    scaled_feature = minmax_scale.fit_transform(will_normalize_feature)
+
+    scaled_feature = np.array(scaled_feature)
+    df_clean[feature] = StandardScaler().fit_transform(scaled_feature)
+  '''
+
+  normalizer = Normalizer(norm="l2")
+  df_clean[cont_features] = normalizer.transform(df_clean[cont_features])
+
+
+  # Find and Clean Outliers
   '''  boxplot before drop outliers '''
   for feature in cont_features:
     draw_boxplot(df_clean, feature, 'before')
@@ -161,6 +169,7 @@ def main():
   '''  boxplot after drop outliers '''
   for feature in cont_features:
     draw_boxplot(df_clean, feature, 'after')
+
 
   ### Categorical Features ###
 
