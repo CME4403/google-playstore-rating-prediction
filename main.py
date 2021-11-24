@@ -5,6 +5,36 @@ import seaborn as sns
 
 plt.style.use('seaborn')
 
+# missing values
+def missing_values(df):
+    #check all missing values in dataset  
+    print("Number of rows having null values in the dataset:")
+    missing_info = (len(df[df.isnull().any(axis=1)]) / len(df) )*100
+    print(len(df[df.isnull().any(axis=1)]),' which is ' ,round(missing_info,2) , '%')
+    
+    #check missing values in columns
+    cols = df.columns[df.isnull().any()].to_list()
+    print("Columns having null values are :",cols)
+
+    for c in cols:
+      missing_info=((df[c].isnull().sum()) / len(df[c]) )*100
+      print(c,type(c),": ",df[c].isnull().sum(), "," ,round(missing_info,2) , '%')
+
+    #drop if the missing value count is less than %1
+    df.dropna(subset=['Installs'],inplace=True)
+    df.dropna(subset=['Size'],inplace=True)
+    df.dropna(subset=['Minimum Android'],inplace=True)
+    df.dropna(subset=['Minimum Installs'],inplace=True)
+    
+    #Handling Rating and Rating Count missing values
+    df['Rating']  = df['Rating'].astype(float)
+    avg = round(df['Rating'].mean(),1)
+    df['Rating'].fillna(avg,inplace=True)
+
+    df['Rating Count']  = df['Rating Count'].astype(float)
+    avg = round(df['Rating Count'].mean(),1)
+    df['Rating Count'].fillna(avg,inplace=True)
+    
 # print(df.describe())
 def num_plots(df, col, title, xlabel):
     fig, ax = plt.subplots(2, 1, sharex=True, figsize=(8,5))
@@ -65,15 +95,8 @@ def main():
   df.drop('Privacy Policy',inplace=True,axis=1)
   df.drop('Scraped Time',inplace=True,axis=1)
 
-  df_clean = df.copy()
-
-  print(df_clean.columns)
-
-  ## drop all rows having rating and rating count values are null (bunu silince size patliyor nedense bulamadim sebebini henuz)
-  df_clean = df_clean.dropna(subset=['Rating', 'Rating Count', 'Installs'])
-
-  #df_clean[df_clean['Rating'] <= 1.0]
-
+  df.head()
+  print("Dataset information", df.info())  
 
   # find outliers
   '''
@@ -99,11 +122,14 @@ def main():
   #print("\n last_updated_outlier_indicies \n")
   #print(last_updated_outlier_indicies)
   '''
+  # handle missing values
+  missing_values(df)
+  df_clean = df.copy()
 
   ### Numerical Features ###
 
   # Size Column
-  #print(df_clean[~df_clean['Size'].str.contains('[k,M,G,Varies with device,nan]$', regex= True, na=False)]);
+  # print(df_clean[~df_clean['Size'].str.contains('[k,M,G,Varies with device,nan]$', regex= True, na=False)]);
   
   # size values that corresponds to 'Varies with device' with 'NaN'
   df_clean['Size'] = df_clean['Size'].replace('Varies with device', 'NaN', regex=True)
@@ -118,9 +144,9 @@ def main():
   for i in df_clean['Size']:
     if i == 'NaN':
       size.append('NaN')
-    elif i[-1] == 'k':
+    elif i[-1] == 'k' or i[-1] == 'K':
       size.append(float(i[:-1])/1000)
-    elif i[-1] == 'G':
+    elif i[-1] == 'G' or i[-1] == 'g':
       size.append(float(i[:-1])*1000)
     else:
       size.append(float(i[:-1]))
@@ -128,6 +154,83 @@ def main():
   # fix units of Size
   df_clean['Size'] = size
   df_clean['Size'] = df_clean['Size'].astype(float)
+
+  # Handling Size Missing Values
+  df_clean['Size']=df_clean['Size'].fillna(df_clean["Size"].mode()[0])
+
+  # Install
+  df.Installs = df.Installs.str.replace(',','',regex=True)
+  df.Installs = df.Installs.str.replace('+','',regex=True)
+  df.Installs = df.Installs.str.replace('Free','0',regex=True)
+  df['Installs'] = pd.to_numeric(df['Installs'])
+  
+  # Minimum Android Version
+  min_andr_ver = []
+  ver_mode = df_clean['Minimum Android'].mode()[0]
+  for i in df_clean['Minimum Android']:
+    ver = i.split()
+    if ver =='Varies with Device':
+      min_andr_ver.append(ver_mode)
+    else:
+      min_andr_ver.append(ver[0][:3])
+          
+  df_clean['Minimum Android'] = min_andr_ver
+  df_clean['Size'] = df_clean['Size'].astype(float)
+  
+  # Content Rating
+
+  # print(df_clean['Content Rating'].value_counts())
+  df_clean['Content Rating'] = df_clean['Content Rating'].replace('Unrated',"Everyone")
+
+  # Cleaning other values just to include Everyone, Teens and Adult 
+
+  df_clean['Content Rating'] = df_clean['Content Rating'].replace('Mature 17+',"Adults")
+  df_clean['Content Rating'] = df_clean['Content Rating'].replace('Adults only 18+',"Adults")
+  df_clean['Content Rating'] = df_clean['Content Rating'].replace('Everyone 10+',"Everyone")
+  
+  # Release Date and Update Date  
+ 
+  #Burada COVID19 1 aralıkta başlamış kabul edilmiş ama ben onu 2020 de başlamış olarak kabul ediyorum.
+  df_clean['Released'] = df_clean['Released'].fillna("NaN")
+  df_clean['Last Updated'] = df_clean['Last Updated'].fillna("NaN")
+  release_date = []
+  lastupdate_date = []
+  
+  for i in df_clean["Released"]:
+      if i == 'NaN':
+        release_date.append(None)
+      else:
+        x = i.split(", ")[1]
+        release_date.append(int(x))
+        
+  for i in df_clean["Last Updated"]:
+        x = i.split(", ")[1]
+        lastupdate_date.append(int(x))   
+          
+  df_clean['Released'] = release_date
+  df_clean['Released'] = round(df_clean['Released'].interpolate(method ='linear'))
+
+  df_clean['Last Updated'] = lastupdate_date
+  
+  covid = []
+  
+  for i in df_clean["Released"]:
+      if i >= 2020:
+        covid.append(True)
+      else:
+        covid.append(False)
+
+  df_clean.loc[(df_clean['Last Updated'] - df_clean['Released'] > 0),'Last Updated']=False
+  df_clean.loc[(df_clean['Last Updated'] - df_clean['Released'] <= 0),'Last Updated']=True
+  
+  # append covid feature
+  df_clean['Covid'] = covid
+  print(df_clean['Covid'])
+  
+  # drop released Date
+  df_clean.drop('Released', inplace=True,axis=1)
+
+  print("Dataset information", df_clean.info())
   
   ''' Visualization
   # num_plots(df_clean,'Size','App Size distribution','Size (MB)')
