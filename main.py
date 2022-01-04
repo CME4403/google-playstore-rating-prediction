@@ -1,9 +1,18 @@
 import numpy as np 
 import pandas as pd
-from matplotlib import pyplot as plt
 import seaborn as sns
-from sklearn import preprocessing
+from matplotlib import pyplot as plt
+from sklearn import metrics
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.model_selection import KFold,GridSearchCV, learning_curve, train_test_split, cross_val_score
+from sklearn.naive_bayes import BernoulliNB, CategoricalNB, GaussianNB, MultinomialNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import Normalizer, StandardScaler
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
 
 plt.style.use('seaborn')
 
@@ -79,6 +88,143 @@ def detect_and_drop_outliers(feature, df):
   upper_bound = q3 + (iqr * 1.5)
   return df[~( (df[feature] < lower_bound) | (df[feature] > upper_bound) )]
 
+def knn_method(data):
+  Install=[]
+  #Target Feature minimize
+  for i in data['Installs']:
+    if i <=500:
+      Install.append('Low')
+    elif i>500 and i<=100000:
+        Install.append('Medium')
+    elif i>100000:
+        Install.append('High')
+    else:
+        Install.append('Unranked')
+        
+  data.drop('Installs',inplace=True,axis=1)    
+  data['Installs'] = Install 
+
+  features = data.drop('Installs', axis=1)
+  target = data.Installs
+
+  standardizer = StandardScaler()
+  features = standardizer.fit(features).transform(features)
+  features_train, features_test, target_train, target_test = train_test_split(features, target,test_size=0.2 ,random_state=1)
+
+  # Create a KNN classifier
+  knn_model = KNeighborsClassifier(n_neighbors=5, n_jobs=-1).fit(features_train, target_train)
+  # Create a pipeline
+  pipe = Pipeline([("standardizer", standardizer), ("knn", knn_model)])
+  # Create space of candidate values
+  search_space = [{"knn__n_neighbors": np.arange(1,10)}]
+  # Create grid search
+  classifier = GridSearchCV(pipe,search_space,cv=5).fit(features_train, target_train)
+  # Best neighborhood size (k)
+  best_k = classifier.best_estimator_.get_params()["knn__n_neighbors"]
+  print(best_k)
+  # KNN model and prediction with best K
+  knn = KNeighborsClassifier(n_neighbors=best_k)
+  knn.fit(features_train, target_train)
+  target_pred = knn.predict(features_test)
+  print(metrics.accuracy_score(target_test, target_pred))
+  print('Class prediction is: %s', target_pred)
+  # View probability of observation 
+  prob = knn.predict_proba(features_test)
+  print('Probability of prediction: %s', prob)
+  # Evaulating algorithm
+  print("Accuracy of model: ",metrics.accuracy_score(target_test, target_pred))
+  print(confusion_matrix(target_test, target_pred))
+  print(classification_report(target_test, target_pred))
+  print(knn.score(features_test, target_test))
+
+  cv = KFold(n_splits=5, shuffle=True, random_state=1)
+  cv_results = cross_val_score(knn,features_test, target_test, scoring='accuracy', cv=cv, n_jobs=-1, error_score='raise')
+  print('Accuracy of KNN classifier with k-fold:', cv_results)
+
+  ''' Error Rate for 1-10 K values'''
+  error_rate = []
+  for i in range(1,10):
+    knn = KNeighborsClassifier(n_neighbors=i)
+    knn.fit(features_train, target_train)
+    pred_i = knn.predict(features_test)
+    error_rate.append(np.mean(pred_i != target_test))
+
+  plt.figure(figsize=(10,6))
+  plt.plot(range(1,10),error_rate,color='blue', linestyle='dashed', 
+          marker='o',markerfacecolor='red', markersize=10)
+  plt.title('Error Rate vs. K Value')
+  plt.xlabel('K')
+  plt.ylabel('Error Rate')
+  plt.show()
+  print("Minimum error:-",min(error_rate),"at K =",error_rate.index(min(error_rate)))
+
+  ''' Accuracy Rate for 1-10 K Values'''
+  acc = []
+  for i in range(1,10):
+      neigh = KNeighborsClassifier(n_neighbors = i).fit(features_train, target_train)
+      yhat = neigh.predict(features_test)
+      acc.append(metrics.accuracy_score(target_test, yhat))
+      
+  plt.figure(figsize=(10,6))
+  plt.plot(range(1,10),acc,color = 'blue',linestyle='dashed', 
+          marker='o',markerfacecolor='red', markersize=10)
+  plt.title('accuracy vs. K Value')
+  plt.xlabel('K')
+  plt.ylabel('Accuracy')
+  plt.show()
+  print("Maximum accuracy:-",max(acc),"at K =",acc.index(max(acc)))
+  return False
+
+def logistic_reg(data):
+  features = data.drop('Installs', axis=1)
+  target = data.Installs
+  # Create training and test set
+  features_train, features_test, target_train, target_test = train_test_split(features, target, random_state=1)
+  # Create logistic regression
+  classifier = LogisticRegression()
+  # Train model and make predictions
+  target_predicted = classifier.fit(features_train, target_train).predict(features_test)
+  # Create confusion matrix
+  matrix = confusion_matrix(target_test, target_predicted)
+  # Create a classification report
+  print(classification_report(target_test, target_predicted))
+  return False
+
+def linear_reg(data):
+  features = data.drop('Installs', axis=1)
+  target = data.Installs
+  standardizer = StandardScaler()
+  features = standardizer.fit(features).transform(features)
+  features_train, features_test, target_train, target_test = train_test_split(features, target,test_size=0.2 ,random_state=1)
+  # Create logistic regression object
+  linear_reg = LinearRegression()
+  # Train model
+  model = linear_reg.fit(features_train, target_train)
+  # View the intercept (w_zero)
+  print(model.intercept_)
+  # View the feature coefficients (weights)
+  print(model.coef_)
+
+  predictions = model.predict(features_test)
+  plt.scatter(target_test, predictions)
+  plt.show()
+  print('MAE:', metrics.mean_absolute_error(target_test, predictions))
+  return False
+
+# Processing
+def processing_methods():
+  df = pd.read_csv('./clean_googleplaystore_dataset.csv')
+  df.drop('Unnamed: 0',inplace=True,axis=1)
+  df = df.sample(n=10000,replace="False")
+  onehotencodeddata = pd.get_dummies(df, columns = ['Category','Content Rating','AppRating','Type','month'])
+  method_id = input("Enter method type: ")
+  return {
+    'knn': knn_method,
+    'linear': linear_reg,
+    'logistic': logistic_reg
+  }[method_id](onehotencodeddata)
+
+
 def main():
   # read dataset
   df = pd.read_csv('./dataset/googleplaystore_expanded.csv')
@@ -141,8 +287,8 @@ def main():
   df_clean['Installs'] = pd.to_numeric(df_clean['Installs'])
   
   #  Normalization
-  ''' Continuous Features are: 'Size', 'Installs', 'Minimum Installs', 'Maximum Installs', 'Rating Count'  '''
-  cont_features = ['Size', 'Installs', 'Minimum Installs', 'Maximum Installs', 'Rating Count']
+  ''' Continuous Features are: 'Size', 'Minimum Installs', 'Maximum Installs',  '''
+  cont_features = ['Size', 'Minimum Installs', 'Maximum Installs']
 
   '''
   for feature in cont_features:
@@ -161,17 +307,18 @@ def main():
 
 
   # Find and Clean Outliers
-  '''  boxplot before drop outliers '''
+  '''  boxplot before drop outliers 
   for feature in cont_features:
     draw_boxplot(df_clean, feature, 'before')
-
+  '''
   ''' drop outliers '''
   for feature in cont_features:
     df_clean = detect_and_drop_outliers(feature, df_clean)
-
-  '''  boxplot after drop outliers '''
+  
+  '''  boxplot after drop outliers 
   for feature in cont_features:
     draw_boxplot(df_clean, feature, 'after')
+  '''
 
 
   ### Categorical Features ###
@@ -185,6 +332,24 @@ def main():
   df_clean['Content Rating'] = df_clean['Content Rating'].replace('Adults only 18+',"Adults")
   df_clean['Content Rating'] = df_clean['Content Rating'].replace('Everyone 10+',"Everyone")
   
+  conditions = [
+    (df_clean['Rating'] == 0) & (df_clean['Rating Count'] == 0),
+    (df_clean['Rating'] >= 0) & (df_clean['Rating'] <= 1) & (df_clean['Rating Count'] != 0),
+    (df_clean['Rating'] > 1) & (df_clean['Rating'] <= 2) & (df_clean['Rating Count'] != 0),
+    (df_clean['Rating'] > 2) & (df_clean['Rating'] <= 3) & (df_clean['Rating Count'] != 0),
+    (df_clean['Rating'] > 3) & (df_clean['Rating'] <= 4) & (df_clean['Rating Count'] != 0),
+    (df_clean['Rating'] > 4) & (df_clean['Rating'] <= 5) & (df_clean['Rating Count'] != 0)
+    ]
+
+  # create a list of the values we want to assign for each condition
+  values = ['Unranked', 'Very Bad', 'Bad', 'Not Bad','Good','Very Good']
+
+  # create a new column and use np.select to assign values to it using our lists as arguments
+  df_clean['AppRating'] = np.select(conditions, values)
+  
+  df_clean = df_clean.drop(['Rating','Rating Count'], axis = 1)
+  
+  # print(len(df_clean['Category'].value_counts()))
   # Release Date and Update Date  
   ''' Burada COVID19 1 aralıkta başlamış kabul edilmiş ama ben onu 2020 de başlamış olarak kabul ediyorum. '''
   df_clean['Released'] = pd.to_datetime(df_clean['Released'], format='%b %d, %Y',infer_datetime_format=True, errors='coerce') 
@@ -217,26 +382,358 @@ def main():
   
   # Minimum Android Version
   min_andr_ver = []
+  # print(df_clean.info())
   ver_mode = df_clean['Minimum Android'].mode()[0]
   for i in df_clean['Minimum Android']:
     ver = i.split()
-    if ver =='Varies with Device':
+    if ver =='Varies with Device' or ver =='Var':
       min_andr_ver.append(ver_mode)
     else:
       min_andr_ver.append(ver[0][:3])
           
   df_clean['Minimum Android'] = min_andr_ver
+  df_clean['Minimum Android'] = df_clean['Minimum Android'].str.replace('Var','4.1',regex=True)
   df_clean['Size'] = df_clean['Size'].astype(float)
 
   #Free
-  df_clean['Type'] = np.where(df['Free'] == True,'Free','Paid')
+  df_clean['Type'] = np.where(df_clean['Free'] == True,'Free','Paid')
   df_clean.drop(['Free'],inplace=True,axis=1)
   
+  
   #print("Dataset information",df_clean.info())  
-  #print(df_clean['Type'].value_counts())
+  # print(df_clean['Minimum Android'].value_counts())
+  # open the file in the write mode
+  df_clean.drop('Last Updated',inplace=True,axis=1)
+  
+  months= []
+  
+  for i in pd.DatetimeIndex(df_clean['Released']).month:
+      if i == 1:
+        months.append('January')
+      elif i == 2:
+        months.append('February')
+      elif i == 3:
+        months.append('March')
+      elif i == 4:
+        months.append('April')
+      elif i == 5:
+        months.append('May')
+      elif i == 6:
+        months.append('June')  
+      elif i == 7:
+        months.append('July')
+      elif i == 8:
+        months.append('August')
+      elif i == 9:
+        months.append('September')
+      elif i == 10:
+        months.append('October')
+      elif i == 11:
+        months.append('November')
+      elif i == 12:
+        months.append('December')        
 
+  #append Up to Date
+  df_clean['month'] = months
+  
+  df_clean.drop('Released',inplace=True,axis=1)
+  df_clean.drop('Minimum Installs',inplace=True,axis=1)
+  df_clean.drop('Maximum Installs',inplace=True,axis=1)
+
+  df_clean.to_csv('./clean_googleplaystore_dataset.csv')
+
+  #
+  #
+  # METHODS AND EVAULATIONS
+  #
+  #
+  # processing_methods() # This method includes KNN, Linear and Logistic Regression Models
+  
+  ''' CLASSIFICATION '''
+  df = pd.read_csv('./clean_googleplaystore_dataset.csv')
+
+  df.drop('Unnamed: 0',inplace=True,axis=1)
+  df.drop('Size',inplace=True,axis=1)
+
+  #df = df.sample(n=1000000 ,replace="False")
+  df = df.sample(n=100 ,replace="False")
+  df['Installs']  = df['Installs'].astype(str)
+  onehotencodeddata = pd.get_dummies(df, columns = ['Category','Content Rating','AppRating','Type','month','Minimum Android'])
+
+  """Split"""
+
+  features = onehotencodeddata.drop('Installs',axis = 1)
+  target = onehotencodeddata['Installs']
+  #class_names = target.unique()
+
+  features_train, features_test, target_train, target_test = train_test_split(features, target,test_size=0.2 ,random_state=1)
+
+
+  """Decision Tree"""
+
+  """
+  decisiontreetainscore = []
+  decisiontreetestscore = []
+  maxdepth = []
+
+  for i in range(20,40):
+      maxdepth.append( i)   
+      clf = DecisionTreeClassifier(random_state = 0,max_depth=i).fit(features_train, target_train)
+      decisiontreetainscore.append(clf.score(features_train, target_train))
+      decisiontreetestscore.append(clf.score(features_test, target_test))
+      print(i)
+  """
+
+  param_grid = {'max_depth': [10, 20, 30, 40, 50,60,70,80,90],
+                'criterion':['gini','entropy']}
+
+  grid = GridSearchCV(DecisionTreeClassifier(random_state=1), param_grid=param_grid, refit = True, verbose = 3,scoring="accuracy")
+  grid.fit(features_train, target_train)
+
+  # print best parameter after tuning
+  print(grid.best_params_)
+  # print how our model looks after hyper-parameter tuning
+  print(grid.best_estimator_)
+  grid_predictions = grid.predict(features_test)
+
+  """
+  clf = DecisionTreeClassifier(random_state = 0,max_depth=20).fit(features_train, target_train)
+  plt.plot(grid.param_grid['maxdepth'], grid.cv_results_, color='r', label='Train Score')
+  plt.plot(grid.param_grid['maxdepth'], grid.cv_results_, color='g', label='Test Score')
+
+  plt.xlabel("Depth Size")
+  plt.ylabel("Train Performance")
+  plt.title("Train Performance by Depth Size")
+  """
+  """
+  clf = DecisionTreeClassifier(random_state = 0,max_depth=35).fit(features_train, target_train)
+  #print('Accuracy of Decision Tree classifier on training set(max depth): {:.2f}'.format(clf.score(features_train, target_train)))
+  print('Accuracy of Decision Tree classifier on test set(max depth): {:.2f}' .format(clf.score(features_test, target_test)))
+
+  clf1 = DecisionTreeClassifier(random_state = 0).fit(features_train, target_train)
+  #print('Accuracy of Decision Tree classifier on training set(not max depth): {:.2f}'.format(clf1.score(features_train, target_train)))
+  print('Accuracy of Decision Tree classifier on test set(not max depth): {:.2f}' .format(clf1.score(features_test, target_test)))
+
+  cv = KFold(n_splits=5, shuffle=True, random_state=1)
+
+  cv_results_max_depth = cross_val_score(clf,features_test, target_test, scoring='accuracy', cv=cv, n_jobs=-1, error_score='raise')
+  print("Accuracy of Decision Tree classifier with n-fold on training set(max depth):", format(100 * cv_results_max_depth.mean(), ".2f") + "%")
+
+  cv_results = cross_val_score(clf1,features_test, target_test, scoring='accuracy', cv=cv, n_jobs=-1, error_score='raise')
+  print("Accuracy of Decision Tree classifier with n-fold on training set(not max depth):", format(100 * cv_results.mean(), ".2f") + "%")
+
+  target_predicted = clf.predict(features_test)
+  print('Predicted Class: %s' % target_predicted[0])
+
+  # Create confusion matrix
+  matrix = confusion_matrix(target_test, target_predicted)
+  # Create pandas dataframe
+  dataframe = pd.DataFrame(matrix, index=class_names, columns=class_names)
+
+
+  # Create heatmap
+  sns.heatmap(dataframe,annot=True, cbar=None, cmap="Blues")
+  plt.title("Confusion Matrix"), plt.tight_layout()
+  plt.ylabel("True Class"), plt.xlabel("Predicted Class")
+  plt.show()
+
+  # Create a classification report
+  print(classification_report(target_test,target_predicted,target_names=class_names))
+
+  train_sizes, train_scores, test_scores = learning_curve( DecisionTreeClassifier(), features, target, cv=5, scoring='accuracy', n_jobs=-1, train_sizes=np.linspace( 0.01, 1.0, 50))
+  # Create means and standard deviations of training set scores
+  train_mean = np.mean(train_scores, axis=1)
+  train_std = np.std(train_scores, axis=1)
+  # Create means and standard deviations of test set scores
+  test_mean = np.mean(test_scores, axis=1)
+  test_std = np.std(test_scores, axis=1)
+  # Draw lines
+  plt.plot(train_sizes, train_mean, '--', color="#111111", label="Training score")
+  plt.plot(train_sizes, test_mean, color="#111111", label="Cross-validation score")
+  # Draw bands
+  plt.fill_between(train_sizes, train_mean - train_std,
+  train_mean + train_std, color="#DDDDDD")
+  plt.fill_between(train_sizes, test_mean - test_std,
+  test_mean + test_std, color="#DDDDDD")
+  # Create plot
+  plt.title("Learning Curve")
+  plt.xlabel("Training Set Size"), plt.ylabel("Accuracy Score"),
+  plt.legend(loc="best")
+  plt.tight_layout()
+  plt.show()
+  """
+
+  """"Random Forest
+  # Create random forest classifier object
+  randomforest=RandomForestClassifier(random_state=0, n_jobs=-1,max_depth=39)
+  # Train model
+  model = randomforest.fit(features_train, target_train)
+
+  randomforest1=RandomForestClassifier(random_state=0, n_jobs=-1)
+  # Train model
+  model2 = randomforest1.fit(features_train, target_train)
+
+  # evaluate the model
+  cv = KFold(n_splits=5, shuffle=True, random_state=1)
+
+  cv_results = cross_val_score(model2,features_test, target_test, scoring='accuracy', cv=cv, n_jobs=-1, error_score='raise')
+
+  cv_results_max_depth = cross_val_score(model2,features_test, target_test, scoring='accuracy', cv=cv, n_jobs=-1, error_score='raise')
+
+  # report performance
+  print("Accuracy of Random Forest Tree classifier with n-fold on training set(not set max depth):", format(100 * cv_results.mean(), ".2f") + "%")
+
+  print("Accuracy of Random Forest Tree classifier with n-fold on training set(max depth):", format(100 * cv_results_max_depth.mean(), ".2f") + "%")
+
+  # report performance
+  print('Accuracy of Random Forest Tree classifier with split on test set(max depth set): {:.2f}' .format(model.score(features_test, target_test)))
+
+  # report performance
+
+  print('Accuracy of Random Forest Tree classifier with split on test set(not set max depth ): {:.2f}' .format(model2.score(features_test, target_test)))
+
+
+  target_predicted = model.predict(features_test)
+  print('Predicted Class: %s' % target_predicted[0])
+
+  # Create confusion matrix
+  matrix = confusion_matrix(target_test, target_predicted)
+  # Create pandas dataframe
+  dataframe = pd.DataFrame(matrix, index=class_names, columns=class_names)
+
+  # Create a classification report
+  print(classification_report(target_test,target_predicted,target_names=class_names))
+
+
+  """
+  #
+  #
+  ''' NAIVE BAYES '''
+  #
+  #
+  df = pd.read_csv('./clean_googleplaystore_dataset.csv')
+  df.drop('Unnamed: 0',inplace=True,axis=1)
+  #df = df.sample(n=500000,replace="False")
+  df = df.sample(n=100 ,replace="False")
+  df['Installs']  = df['Installs'].astype(str)
+
+  """ Minimize the Install target attribute values
+  Install=[]
+  #Target Feature minimize
+  for i in df['Installs']:
+    if i <=500:
+      Install.append('Low')
+    elif i>500 and i<=100000:
+        Install.append('Medium')
+    elif i>100000:
+        Install.append('High')
+    else:
+        Install.append('Unranked')
+        
+  df.drop('Installs',inplace=True,axis=1)    
+  df['Installs']=Install
+  """
+
+  #print(df['Installs'].value_counts())
+  onehotencodeddata = pd.get_dummies(df, columns = ['Category','Content Rating','AppRating','Type','month'])
+  features = onehotencodeddata.drop('Installs',axis = 1)
+  target = onehotencodeddata.Installs
+  class_names = target.unique()
+
+  """Split"""
+  features_train, features_test, target_train, target_test = train_test_split(features, target,test_size=0.2 ,random_state=1)
+
+  #Bernoulli
+  bnb = BernoulliNB()
+  bnb.fit(features_train, target_train)
+  print('Accuracy of Bernolli classifier on training set: {:.2f}'.format(bnb.score(features_train, target_train)))
+  print('Accuracy of Bernolli classifier on test set: {:.2f}'.format(bnb.score(features_test, target_test)))
+
+  #######N-fold Cross Validation
+  cv = KFold(n_splits=5, shuffle=True, random_state=1)
+  cv_results = cross_val_score(bnb,features_test, target_test, scoring='accuracy', cv=cv, n_jobs=-1, error_score='raise')
+
+  print("Accuracy of Bernoulli Naive Bayes classifier with n-fold on test set:", format(100 * cv_results.mean(), ".2f") + "%")
+
+  """
+  #Multinominal
+  bnb = MultinomialNB()
+  bnb.fit(features_train, target_train)
+  print('Accuracy of GNB classifier on training set: {:.2f}'.format(bnb.score(features_train, target_train)))
+  print('Accuracy of GNB classifier on test set: {:.2f}'.format(bnb.score(features_test, target_test)))
+  """
+  """
+  #Gaussian
+  bnb = GaussianNB()
+  bnb.fit(features_train, target_train)
+  print('Accuracy of GNB classifier on training set: {:.2f}'.format(bnb.score(features_train, target_train)))
+  print('Accuracy of GNB classifier on test set: {:.2f}'.format(bnb.score(features_test, target_test)))
+
+  """
+  """
+  #CategoricalNB
+  bnb = CategoricalNB()
+  bnb.fit(features_train, target_train)
+  print('Accuracy of GNB classifier on training set: {:.2f}'.format(bnb.score(features_train, target_train)))
+  print('Accuracy of GNB classifier on test set: {:.2f}'.format(bnb.score(features_test, target_test)))
+  """
+  #
+  #
+  ''' SVM '''
+  #
+  #
+  df = pd.read_csv('./clean_googleplaystore_dataset.csv')
+  df.drop('Unnamed: 0',inplace=True,axis=1)
+  df = df.sample(n=1000,replace="False")
+  df['Installs']  = df['Installs'].astype(str)
+
+  onehotencodeddata = pd.get_dummies(df, columns = ['Category','Content Rating','AppRating','Type','month'])
+  features = onehotencodeddata.drop('Installs',axis = 1)
+  target = onehotencodeddata.Installs
+
+  """Split"""
+  features_train, features_test, target_train, target_test = train_test_split(features, target,test_size=0.2 ,random_state=1)
+
+
+  # defining parameter range auto= 1/n_features
+  param_grid = {'C': [0.1, 1, 10, 100, 1000],
+                'gamma': [0.001, 0.01, 0.1, 1, 10, 100,'auto'],
+                'kernel': ['linear']}
+
+  grid = GridSearchCV(SVC(), param_grid, refit = True, verbose = 3,scoring="accuracy")
+
+  grid.fit(features_train, target_train)
+
+  # print best parameter after tuning
+  print(grid.best_params_)
+  
+  # print how our model looks after hyper-parameter tuning
+  print(grid.best_estimator_)
+
+
+  grid_predictions = grid.predict(features_test)
+
+  print(grid_predictions)
+  """
+  features = onehotencodeddata.drop('Installs',axis = 1)
+  target = onehotencodeddata.Installs
+
+  features_train, features_test, target_train, target_test = train_test_split(features, target,test_size=0.2 ,random_state=1)
+  class_names = target_test.unique()
+
+  svm = SVC()
+  svm.fit(features_train, target_train)
+  print('Accuracy of SVM classifier on training set: {:.2f}'.format(svm.score(features_train, target_train)))
+  print('Accuracy of SVM classifier on test set: {:.2f}'.format(svm.score(features_test, target_test)))
+
+  target_predicted = svm.predict(features_test)
+  # print classification report
+  print(classification_report(target_test, target_predicted))"""
+
+  # 
+  #
   ### Visualization ###
-
+  #
   # Rating Column
   '''
   num_plots(df_clean,'Rating','App rating distribution','Rating') '''
@@ -390,8 +887,7 @@ def main():
   plt.ylabel('Installs')
   plt.xticks(fontsize=10,fontweight='bold',rotation=45,ha='right');
   """
-
-  """
+"""
   f, ax = plt.subplots(2,2,figsize=(10,15))
 
   ax[0,0].hist(df_clean.Rating, range=(3,5))
@@ -412,13 +908,13 @@ def main():
   ax[1,0].set_xticklabels(d.Size.unique(),rotation=90)
   ax[1,0].set_title('Mean Install per Size')
   f.tight_layout()
-  """
-
+"""
+"""
   # Correlation Matrix
   sns.heatmap(df_clean.corr(), annot=True, cmap='Blues')
   plt.title('Correlation Matrix')
   plt.show()
-  
+  """
 
 if __name__ == "__main__":
     main()
